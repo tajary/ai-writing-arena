@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { ethers } from "ethers";
 import { Trophy, Clock, Target, TrendingUp, Award, Zap, BookOpen, Star, CheckCircle, Medal, Crown, Sparkles, List, Users, FileText } from 'lucide-react';
 
 const AIWritingArena = () => {
@@ -56,6 +57,7 @@ const AIWritingArena = () => {
 
   const connectWallet = async () => {
     //alert("Yes")
+    const OG_CHAIN_ID = 16661n;
     try {
       if (typeof window.ethereum === 'undefined') {
         alert('MetaMask is not installed! Please install MetaMask browser extension to continue.');
@@ -66,6 +68,8 @@ const AIWritingArena = () => {
       const initialAccounts = await window.ethereum.request({
         method: 'eth_accounts'
       });
+
+
 
       let accounts;
       if (initialAccounts.length === 0) {
@@ -83,6 +87,30 @@ const AIWritingArena = () => {
         alert('MetaMask is locked! Please unlock your MetaMask extension and try again.');
         return;
       }
+
+      try {
+        await window.ethereum.request({
+            method: 'wallet_switchEthereumChain',
+            params: [{ chainId: "0x4115" }],
+        });
+    } catch (switchError) {
+        // This error code indicates that the chain has not been added to MetaMask
+        if (switchError.code === 4902) {
+            console.log('This network is not added in MetaMask. Please add it first.');
+        }
+        console.error('Failed to switch network:', switchError);
+    }
+
+
+      const provider = new ethers.BrowserProvider(window.ethereum);
+      const network = await provider.getNetwork();
+      console.log("Current network:", network, network.chainId);
+
+      if (network.chainId !== OG_CHAIN_ID) {
+        alert("Please switch your wallet to 0G Network!");
+        return;
+      }
+
       const account = accounts[0];
       const message = `Welcome to AI Writing Arena!\n\nSign this message to verify your identity.\n\nWallet: ${account}\nTimestamp: ${Date.now()}`;
 
