@@ -617,6 +617,246 @@ app.get('/api/leaderboard', authenticateToken, async (req, res) => {
     }
 });
 
+
+// GET /api/submission/my-submissions (with proper feedback handling)
+app.get('/api/submission/my-submissions', authenticateToken, async (req, res) => {
+    try {
+        const connection = await pool.getConnection();
+        try {
+            // Get user ID
+            const [users] = await connection.query(
+                'SELECT id FROM users WHERE wallet_address = ?',
+                [req.walletAddress.toLowerCase()]
+            );
+
+            if (users.length === 0) {
+                return res.status(404).json({
+                    success: false,
+                    error: { code: 'USER_NOT_FOUND', message: 'User not found' }
+                });
+            }
+
+            const userId = users[0].id;
+
+            // Get all user submissions with topic details
+            const [submissions] = await connection.query(`
+                SELECT 
+                    s.id,
+                    s.topic_id,
+                    t.topic,
+                    t.difficulty,
+                    s.text,
+                    s.word_count,
+                    s.time_spent,
+                    s.overall_score,
+                    s.grammar_score,
+                    s.vocabulary_score,
+                    s.creativity_score,
+                    s.coherence_score,
+                    s.feedback,
+                    s.submitted_at
+                FROM submissions s
+                JOIN topics t ON s.topic_id = t.id
+                WHERE s.user_id = ?
+                ORDER BY s.submitted_at DESC
+            `, [userId]);
+
+            // Safely parse JSON feedback
+            const submissionsWithParsedFeedback = submissions.map(sub => {
+                let feedback = sub.feedback;
+                if (typeof feedback === 'string') {
+                    try {
+                        feedback = JSON.parse(feedback);
+                    } catch (parseError) {
+                        console.warn('Failed to parse feedback as JSON:', parseError);
+                        feedback = { 
+                            error: 'Failed to parse feedback',
+                            raw: feedback 
+                        };
+                    }
+                } else if (!feedback) {
+                    feedback = {};
+                }
+
+                return {
+                    ...sub,
+                    feedback: feedback
+                };
+            });
+
+            res.json({
+                success: true,
+                submissions: submissionsWithParsedFeedback,
+                total: submissions.length
+            });
+        } finally {
+            connection.release();
+        }
+    } catch (error) {
+        console.error('Get user submissions error:', error);
+        res.status(500).json({
+            success: false,
+            error: { code: 'SERVER_ERROR', message: 'Internal server error' }
+        });
+    }
+});
+
+
+// GET /api/topic/used-topics (Simplified)
+app.get('/api/topic/used-topics', authenticateToken, async (req, res) => {
+    try {
+        const connection = await pool.getConnection();
+        try {
+            // Get all topics that have submissions with basic stats
+            const [usedTopics] = await connection.query(`
+                SELECT 
+                    t.id,
+                    t.topic,
+                    t.difficulty,
+                    t.time_limit,
+                    t.created_at,
+                    COUNT(s.id) as submission_count,
+                    MAX(s.overall_score) as highest_score,
+                    AVG(s.overall_score) as average_score,
+                    MAX(s.submitted_at) as last_activity
+                FROM topics t
+                JOIN submissions s ON t.id = s.topic_id
+                GROUP BY t.id, t.topic, t.difficulty, t.time_limit, t.created_at
+                ORDER BY last_activity DESC
+            `);
+
+            res.json({
+                success: true,
+                topics: usedTopics,
+                total: usedTopics.length
+            });
+        } finally {
+            connection.release();
+        }
+    } catch (error) {
+        console.error('Get used topics error:', error);
+        res.status(500).json({
+            success: false,
+            error: { code: 'SERVER_ERROR', message: 'Internal server error' }
+        });
+    }
+});
+
+
+// GET /api/submission/top-submissions/:topicId
+app.get('/api/submission/top-submissions/:topicId', authenticateToken, async (req, res) => {
+    try {
+        const { topicId } = req.params;
+
+        if (!topicId) {
+            return res.status(400).json({
+                success: false,
+                error: { code: 'MISSING_TOPIC_ID', message: 'Topic ID is required' }
+            });
+        }
+
+        const connection = await pool.getConnection();
+        try {
+            // Verify topic exists
+            const [topics] = await connection.query(
+                'SELECT id, topic, difficulty FROM topics WHERE id = ?',
+                [topicId]
+            );
+
+            if (topics.length === 0) {
+                return res.status(404).json({
+                    success: false,
+                    error: { code: 'TOPIC_NOT_FOUND', message: 'Topic not found' }
+                });
+            }
+
+            const topic = topics[0];
+
+            // Get top 3 submissions
+			// Updated backend query to include topic
+			const [topSubmissions] = await connection.query(`
+				SELECT 
+					s.id,
+					s.user_id,
+					u.wallet_address,
+					s.text,
+					s.word_count,
+					s.time_spent,
+					s.overall_score,
+					s.grammar_score,
+					s.vocabulary_score,
+					s.creativity_score,
+					s.coherence_score,
+					s.feedback,
+					s.submitted_at,
+					t.topic  
+				FROM submissions s
+				JOIN users u ON s.user_id = u.id
+				JOIN topics t ON s.topic_id = t.id  
+				WHERE s.topic_id = ? AND s.overall_score IS NOT NULL
+				ORDER BY s.overall_score DESC, s.submitted_at ASC
+				LIMIT 3
+			`, [topicId]);
+
+            // Add rank manually and safely handle feedback
+            const submissionsWithRanking = topSubmissions.map((sub, index) => {
+                // Safely handle feedback - it might be a string, object, or null
+                let feedback = sub.feedback;
+                if (typeof feedback === 'string') {
+                    try {
+                        feedback = JSON.parse(feedback);
+                    } catch (parseError) {
+                        console.warn('Failed to parse feedback as JSON:', parseError);
+                        feedback = { error: 'Failed to parse feedback' };
+                    }
+                }
+                // If feedback is already an object or null, leave it as is
+
+                return {
+                    rank: index + 1,
+                    submission_id: sub.id,
+                    user_id: sub.user_id,
+                    wallet_address: sub.wallet_address,
+                    text: sub.text,
+                    word_count: sub.word_count,
+                    time_spent: sub.time_spent,
+                    overall_score: sub.overall_score,
+                    grammar_score: sub.grammar_score,
+                    vocabulary_score: sub.vocabulary_score,
+                    creativity_score: sub.creativity_score,
+                    coherence_score: sub.coherence_score,
+                    feedback: feedback,
+                    topic: sub.topic,
+                    submitted_at: sub.submitted_at
+                };
+            });
+
+            res.json({
+                success: true,
+                topic: {
+                    id: topic.id,
+                    topic: topic.topic,
+                    difficulty: topic.difficulty
+                },
+                top_submissions: submissionsWithRanking,
+                total: topSubmissions.length
+            });
+        } finally {
+            connection.release();
+        }
+    } catch (error) {
+        console.error('Get top submissions error:', error);
+        res.status(500).json({
+            success: false,
+            error: { code: 'SERVER_ERROR', message: 'Internal server error' }
+        });
+    }
+});
+
+
+
+
+
 // --------------------------------------------
 // 7. Start Server
 // --------------------------------------------
