@@ -225,7 +225,8 @@ The feedback includes:
 
 * 🧾 **GitHub:** [https://github.com/tajary/ai-writing-arena](https://github.com/tajary/ai-writing-arena)
 * 🌐 **Live Demo:** [https://ai-writing-arena.buildlabz.xyz](https://ai-writing-arena.buildlabz.xyz)
-* 🧠 **Backend API:** [https://awa-srv.buildlabz.xyz/api](https://awa-srv.buildlabz.xyz/api)
+* 🎬 **Youtube Video:** [https://www.youtube.com/watch?v=wmXY9Qvapbg](https://www.youtube.com/watch?v=wmXY9Qvapbg)
+* 📑 **Documentation:** [https://github.com/tajary/ai-writing-arena/blob/main/docs/system-design.md](https://github.com/tajary/ai-writing-arena/blob/main/docs/system-design.md)
 * 🧵 **Twitter Thread:** [https://x.com/tajary/status/1983684458315391251](https://x.com/tajary/status/1983684458315391251)
 
 ---
